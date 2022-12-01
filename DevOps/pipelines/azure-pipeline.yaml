@@ -1,0 +1,109 @@
+name: $(Build.DefinitionName)_tag-$(Build.BuildId)_at-$(Date:ddMMyyyy)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - task3
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+Parameters:
+- name: appName
+  type: string
+  displayName: 'Application Name'
+  default: 'webApp'
+- name: filePath
+  type: string
+  displayName: 'filePath for the zip file'
+- name: agnetImage
+  type: string
+  default: windows-latest
+  values:
+  - windows-latest
+  - ubuntu-latest
+  - mac-latest
+
+variables:
+  azureServiceConnection: service-connections #Contains the ConnectedServiceName variable for azureSubscription
+  buildConfiguration: 'Release'
+  resourceGroupName: ${{parameters.appName}}-rg
+  appServicePlanRG: ${{parameters.appName}}-asp-rg
+  appServicePlanName: ${{parameters.appName}}-asp
+  location: 'westeurope'
+  templateFile: './DevOps/templates/main.bicep'
+
+stages:
+
+- stage: Build
+  displayName: "Build stage"
+  jobs:
+  - job:
+    pool:
+      vmImage: "${{parameters.agnetImage}}"
+    steps:
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Build'
+      inputs:
+        command: 'build'
+        projects: app/${{parameters.appName}}.csproj
+        arguments: '--configuration $(buildConfiguration)' 
+    
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish Application'
+      inputs:
+        command: 'publish'
+        publishWebProjects: false
+        projects: 'app/${{parameters.appName}}.csproj'
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+        artifact: '${{parameters.appName}}.zip'
+        publishLocation: 'pipeline'
+
+- stage: Deploy 
+  displayName: "Deploy stage"
+  jobs:
+  - job:
+    displayName: Deploy Infrastructure 
+    pool:
+      vmImage: "${{parameters.agnetImage}}"
+    steps:
+    
+    - task: AzureResourceManagerTemplateDeployment@3
+      inputs:
+        deploymentScope: 'Resource Group'
+        azureResourceManagerConnection: '$(azureServiceConnection)'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: '$(resourceGroupName)'
+        location: '$(location)'
+        templateLocation: 'Linked artifact'
+        csmFile: '$(templateFile)'
+        overrideParameters: '-sku D1 -appServicePlanName $(appServicePlanName)'
+        deploymentMode: 'Incremental'
+        deploymentName: DeployPipeline.${{parameters.appName}}
+  
+  - job:
+    displayName: Deploy Application 
+    pool:
+      vmImage: "${{parameters.agnetImage}}"
+    steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          source: 'current'
+          path: '$(Pipeline.Workspace)'
+
+      - task: AzureWebApp@1
+        inputs:
+          azureSubscription: '$(azureServiceConnection)'
+          appType: <app type>
+          appName: '${{parameters.appName}}'
+          resourceGroupName: $(resourceGroupName)
+          package: '$(Pipeline.Workspace)/${{parameters.appName}}.zip'

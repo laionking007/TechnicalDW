@@ -3,33 +3,26 @@
 param webAppName string = ''
 
 @description('Location for all resources.')
-param location string = resourceGroup().location
+param location string = 'westeurope'
 
 @description('The Runtime stack of current web app')
-param linuxFxVersion string = 'DOTNETCORE|3.0'
-
-@description('App Service Plan Resource Group')
-param appServicePlanRG string
-
-@description('App Service Plan Name')
-param appServicePlanName string
+param windowsFxVersion string = 'DOTNETCORE|6.0'
 
 @description('App Service Plan Name')
 param timezone string = ''
 
-resource appServicePlan 'Microsoft.Web/serverfarms@2021-02-01 existing = {
-  name: 'appServicePlanPortalName'
-  scope: resourceGroup(appServicePlanRG)
-}
+@description('App Service Plan ID')
+param serverFarmId string 
+
 
 resource webApp 'Microsoft.Web/sites@2021-02-01' = {
   name: webAppName
   location: location
   properties: {
     httpsOnly: true
-    serverFarmId: appServicePlan.id
+    serverFarmId: serverFarmId
     siteConfig: {
-      linuxFxVersion: linuxFxVersion
+      windowsFxVersion: windowsFxVersion
       minTlsVersion: '1.2'
       ftpsState: 'FtpsOnly'
       websiteTimeZone: timezone 
